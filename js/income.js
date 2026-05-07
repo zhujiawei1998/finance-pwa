@@ -1,18 +1,21 @@
+// 收入模块
 const IncomeForm = {
   init() {
-    document.getElementById('income-date').value = Stats.today();
-    document.getElementById('income-form').addEventListener('submit', e => { e.preventDefault(); this.submit(); });
+    var d = document.getElementById('income-date');
+    if (d) d.value = Stats.today();
+    var form = document.getElementById('income-form');
+    if (form) form.addEventListener('submit', function(e) { e.preventDefault(); IncomeForm.submit(); });
   },
 
   submit() {
-    const amount = parseFloat(document.getElementById('income-amount').value);
-    const date = document.getElementById('income-date').value;
-    const category = document.getElementById('income-category').value;
-    const note = document.getElementById('income-note').value.trim();
-    const err = document.getElementById('income-error');
+    var amount = parseFloat(document.getElementById('income-amount').value);
+    var date = document.getElementById('income-date').value;
+    var category = document.getElementById('income-category').value;
+    var note = document.getElementById('income-note').value.trim();
+    var err = document.getElementById('income-error');
     if (!amount || amount <= 0) { err.textContent = '请输入有效金额'; err.classList.remove('hidden'); return; }
     err.classList.add('hidden');
-    DB.addIncome({ amount, date, note, category });
+    DB.addIncome({ amount: amount, date: date, note: note, category: category });
     Toast.show('收入记录成功', 'success');
     this.reset();
     refreshDashboard();
@@ -21,7 +24,8 @@ const IncomeForm = {
   reset() {
     document.getElementById('income-amount').value = '';
     document.getElementById('income-note').value = '';
-    document.getElementById('income-date').value = Stats.today();
+    var d = document.getElementById('income-date');
+    if (d) d.value = Stats.today();
     document.getElementById('income-category').value = '工资';
   }
 };
