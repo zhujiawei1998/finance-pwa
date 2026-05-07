@@ -1,163 +1,167 @@
-// 自动同步模块 — 设备ID自动登录 + 数据同步
-const Sync = {
+// 自动同步 — 先保本地数据，后台推送到 Supabase
+var Sync = {
   ready: false,
+  _userId: null,
 
   async init() {
-    if (!supabase) return;
+    if (!supabase) return console.warn('Sync: Supabase 未加载');
 
-    // 自动登录
-    var ok = await this._autoAuth();
-    if (!ok) return;
+    try {
+      var ok = await this._auth();
+      if (!ok) return console.warn('Sync: 自动登录失败，离线模式运行');
+    } catch(e) {
+      console.warn('Sync: 登录异常', e.message);
+      return;
+    }
 
     this.ready = true;
+    console.log('Sync: 已连接');
 
-    // 先从 Supabase 拉取数据合并到本地
-    await this.pull();
+    // 拉取远程数据合并（仅新增，不覆盖本地）
+    try { await this._pull(); } catch(e) { console.warn('Sync: 拉取失败', e.message); }
 
-    // 推送本地独有数据到 Supabase
-    await this.push();
+    // 推送本地数据
+    try { await this._push(); } catch(e) { console.warn('Sync: 推送失败', e.message); }
   },
 
-  // 设备ID自动注册/登录
-  async _autoAuth() {
+  async _auth() {
     // 复用已有 session
     var { data: { session } } = await supabase.auth.getSession();
-    if (session) return true;
+    if (session) { this._userId = session.user.id; return true; }
 
-    // 获取或创建设备ID
+    // 设备 ID 自动登录
     var deviceId = null;
     try { deviceId = localStorage.getItem('finance_device_id'); } catch(e) {}
     if (!deviceId) {
-      deviceId = 'dev_' + crypto.randomUUID().slice(0, 8);
+      deviceId = 'd_' + crypto.randomUUID().slice(0, 8);
       try { localStorage.setItem('finance_device_id', deviceId); } catch(e) {}
     }
 
-    var email = deviceId + '@finance.app';
-    var password = '__finance_sync_2026__';
+    var email = deviceId + '@sync.local';
+    var pwd = 'p_' + deviceId + '_2026';
 
     // 尝试登录
-    var { error } = await supabase.auth.signInWithPassword({ email: email, password: password });
-    if (!error) return true;
+    var { data: loginData, error: loginErr } = await supabase.auth.signInWithPassword({ email: email, password: pwd });
+    if (!loginErr && loginData.user) {
+      this._userId = loginData.user.id;
+      return true;
+    }
 
     // 注册
-    var { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email: email, password: password });
-    if (signUpError) {
-      console.warn('自动注册失败:', signUpError.message);
+    var { data: signData, error: signErr } = await supabase.auth.signUp({ email: email, password: pwd });
+    if (signErr) {
+      console.warn('Sync: 注册失败', signErr.message);
       return false;
     }
-    // 有 session = 注册成功无需确认
-    if (signUpData.session) return true;
-    // 需要邮箱确认 — 提示用户
-    console.warn('请在 Supabase 关闭邮箱确认: Authentication > Settings > Confirm email');
+    if (signData.user) {
+      if (signData.session) {
+        this._userId = signData.user.id;
+        return true;
+      }
+      // 需要邮箱确认
+      console.warn('Sync: 请在 Supabase 关闭邮箱确认 (Authentication > Confirm sign up)');
+      return false;
+    }
     return false;
   },
 
-  // 从 Supabase 拉取数据，合并到本地
-  async pull() {
-    var userId = (await supabase.auth.getUser()).data.user?.id;
-    if (!userId) return;
+  // 从 Supabase 拉取新数据合并（只新增，不删除不覆盖）
+  async _pull() {
+    if (!this._userId) return;
 
-    // 获取所有支出
-    var { data: expenses } = await supabase.from('expenses').select('*').eq('user_id', userId);
-    // 获取所有收入
-    var { data: incomes } = await supabase.from('income').select('*').eq('user_id', userId);
+    var [expRes, incRes] = await Promise.all([
+      supabase.from('expenses').select('id,amount,date,note,expense_type,category,created_at').eq('user_id', this._userId),
+      supabase.from('income').select('id,amount,date,note,category,created_at').eq('user_id', this._userId)
+    ]);
 
-    // 合并到本地（保留本地独有的，Supabase 有而本地没有的加入）
-    var localExp = DB.getExpenses();
-    var localInc = DB.getIncomes();
-    var localExpIds = new Set(localExp.map(function(e) { return e.id; }));
-    var localIncIds = new Set(localInc.map(function(i) { return i.id; }));
+    var remoteExp = expRes.data || [];
+    var remoteInc = incRes.data || [];
 
-    var newExp = [];
-    var newInc = [];
+    if (remoteExp.length === 0 && remoteInc.length === 0) return;
 
-    (expenses || []).forEach(function(e) {
-      if (!localExpIds.has(e.id)) newExp.push({
-        id: e.id, amount: e.amount, date: e.date, note: e.note || '',
-        expense_type: e.expense_type, category: e.category, created_at: e.created_at
-      });
+    var localExp = DB._expenses();
+    var localInc = DB._incomes();
+    var localExpIds = {};
+    var localIncIds = {};
+
+    localExp.forEach(function(e) { localExpIds[e.id] = true; });
+    localInc.forEach(function(i) { localIncIds[i.id] = true; });
+
+    var added = 0;
+    remoteExp.forEach(function(e) {
+      if (!localExpIds[e.id]) {
+        localExp.push({ id: e.id, amount: e.amount, date: e.date, note: e.note||'', expense_type: e.expense_type, category: e.category, created_at: e.created_at });
+        added++;
+      }
     });
-    (incomes || []).forEach(function(i) {
-      if (!localIncIds.has(i.id)) newInc.push({
-        id: i.id, amount: i.amount, date: i.date, note: i.note || '',
-        category: i.category, created_at: i.created_at
-      });
+    remoteInc.forEach(function(i) {
+      if (!localIncIds[i.id]) {
+        localInc.push({ id: i.id, amount: i.amount, date: i.date, note: i.note||'', category: i.category, created_at: i.created_at });
+        added++;
+      }
     });
 
-    if (newExp.length > 0 || newInc.length > 0) {
-      var allExp = localExp.concat(newExp);
-      var allInc = localInc.concat(newInc);
-      try { localStorage.setItem('finance_expenses', JSON.stringify(allExp)); } catch(e) {}
-      try { localStorage.setItem('finance_incomes', JSON.stringify(allInc)); } catch(e) {}
+    if (added > 0) {
+      DB._saveExpenses(localExp);
+      DB._saveIncomes(localInc);
+      console.log('Sync: 从云端同步了 ' + added + ' 条记录');
     }
   },
 
   // 推送本地独有数据到 Supabase
-  async push() {
-    var userId = (await supabase.auth.getUser()).data.user?.id;
-    if (!userId) return;
+  async _push() {
+    if (!this._userId) return;
 
-    var { data: remoteExp } = await supabase.from('expenses').select('id').eq('user_id', userId);
-    var { data: remoteInc } = await supabase.from('income').select('id').eq('user_id', userId);
-    var remoteExpIds = new Set((remoteExp || []).map(function(e) { return e.id; }));
-    var remoteIncIds = new Set((remoteInc || []).map(function(i) { return i.id; }));
+    var localExp = DB._expenses();
+    var localInc = DB._incomes();
 
-    var localExp = DB.getExpenses();
-    var localInc = DB.getIncomes();
+    var [expRes, incRes] = await Promise.all([
+      supabase.from('expenses').select('id').eq('user_id', this._userId),
+      supabase.from('income').select('id').eq('user_id', this._userId)
+    ]);
+
+    var remoteExpIds = {};
+    var remoteIncIds = {};
+    (expRes.data || []).forEach(function(e) { remoteExpIds[e.id] = true; });
+    (incRes.data || []).forEach(function(i) { remoteIncIds[i.id] = true; });
 
     for (var i = 0; i < localExp.length; i++) {
       var e = localExp[i];
-      if (!remoteExpIds.has(e.id)) {
+      if (!remoteExpIds[e.id]) {
         await supabase.from('expenses').insert({
-          id: e.id, user_id: userId, amount: e.amount, date: e.date,
-          note: e.note, expense_type: e.expense_type, category: e.category,
-          created_at: e.created_at || new Date().toISOString()
+          id: e.id, user_id: this._userId, amount: e.amount, date: e.date,
+          note: e.note||'', expense_type: e.expense_type, category: e.category, created_at: e.created_at
         });
       }
     }
     for (var j = 0; j < localInc.length; j++) {
       var inc = localInc[j];
-      if (!remoteIncIds.has(inc.id)) {
+      if (!remoteIncIds[inc.id]) {
         await supabase.from('income').insert({
-          id: inc.id, user_id: userId, amount: inc.amount, date: inc.date,
-          note: inc.note, category: inc.category,
-          created_at: inc.created_at || new Date().toISOString()
+          id: inc.id, user_id: this._userId, amount: inc.amount, date: inc.date,
+          note: inc.note||'', category: inc.category, created_at: inc.created_at
         });
       }
     }
   },
 
-  // 新增支出时同步到 Supabase
-  async addExpense(e) {
-    if (!this.ready) return;
-    var userId = (await supabase.auth.getUser()).data.user?.id;
-    if (!userId) return;
-    await supabase.from('expenses').insert({
-      id: e.id, user_id: userId, amount: e.amount, date: e.date,
-      note: e.note, expense_type: e.expense_type, category: e.category,
-      created_at: e.created_at
-    });
+  // 实时同步 — 新增
+  addExpense: function(e) { if (this.ready) this._insert('expenses', e); },
+  addIncome: function(i) { if (this.ready) this._insert('income', i); },
+
+  async _insert(table, row) {
+    try {
+      var payload = { id: row.id, user_id: this._userId, amount: row.amount, date: row.date, note: row.note||'', category: row.category, created_at: row.created_at };
+      if (table === 'expenses') payload.expense_type = row.expense_type;
+      await supabase.from(table).insert(payload);
+    } catch(err) { /* ignore - will sync on next push */ }
   },
 
-  // 新增收入时同步
-  async addIncome(i) {
-    if (!this.ready) return;
-    var userId = (await supabase.auth.getUser()).data.user?.id;
-    if (!userId) return;
-    await supabase.from('income').insert({
-      id: i.id, user_id: userId, amount: i.amount, date: i.date,
-      note: i.note, category: i.category,
-      created_at: i.created_at
-    });
-  },
+  // 实时同步 — 删除
+  deleteExpense: function(id) { if (this.ready) this._del('expenses', id); },
+  deleteIncome: function(id) { if (this.ready) this._del('income', id); },
 
-  // 删除时同步
-  async deleteExpense(id) {
-    if (!this.ready) return;
-    await supabase.from('expenses').delete().eq('id', id);
-  },
-  async deleteIncome(id) {
-    if (!this.ready) return;
-    await supabase.from('income').delete().eq('id', id);
+  async _del(table, id) {
+    try { await supabase.from(table).delete().eq('id', id); } catch(e) {}
   }
 };
