@@ -1,5 +1,5 @@
 // Service Worker — 缓存壳层，离线回退
-const CACHE_NAME = 'finance-pwa-v1';
+const CACHE_NAME = 'finance-pwa-v3';
 const SHELL_FILES = [
   '/',
   '/index.html',
