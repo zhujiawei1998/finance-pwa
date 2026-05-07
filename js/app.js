@@ -13,47 +13,49 @@ const pageTitles = {
 
 async function initApp() {
   initSupabase();
+
+  // 不管 Supabase 有没有加载，先绑定认证表单事件
   if (!supabase) {
-    document.getElementById('auth-error').textContent = 'Supabase 初始化失败，请检查 config.js 配置';
+    document.getElementById('auth-error').textContent = '正在加载中，请稍候...';
     document.getElementById('auth-error').classList.remove('hidden');
-    return;
+    // 延迟重试
+    setTimeout(() => {
+      initSupabase();
+      if (!supabase) {
+        document.getElementById('auth-error').textContent = '加载失败，请检查网络后刷新页面';
+      } else {
+        document.getElementById('auth-error').classList.add('hidden');
+      }
+    }, 2000);
   }
 
-  // 初始化离线检测
   Offline.init();
-
-  // 认证表单
   setupAuthForm();
 
-  // 恢复 session
-  await Auth.init();
+  // 只有 Supabase 就绪才恢复登录态
+  if (supabase) {
+    await Auth.init();
+  }
 
-  // 路由
   Router.init();
   window.addEventListener('hashchange', onPageChanged);
 
-  // 底部 Tab
   document.querySelectorAll('.tab-item').forEach(tab => {
     tab.addEventListener('click', () => Router.go(tab.dataset.page));
   });
 
-  // 登出按钮
   document.getElementById('logout-btn').addEventListener('click', () => Auth.signOut());
 
-  // 页面进入图表页时初始化图表
   window.addEventListener('hashchange', () => {
     if (location.hash === '#charts') initCharts();
   });
 
-  // 通知初始化
   Notifications.init();
 
-  // 注册 Service Worker
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
 
-  // 如果已登录，执行首次渲染
   if (Auth.currentUser) {
     await refreshDashboard();
   }
@@ -110,6 +112,14 @@ function setupAuthForm() {
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+
+    if (!supabase) {
+      errorEl.style.color = '#EF4444';
+      errorEl.textContent = '连接未就绪，请刷新页面后重试';
+      errorEl.classList.remove('hidden');
+      return;
+    }
+
     const email = document.getElementById('auth-email').value.trim();
     const password = document.getElementById('auth-password').value;
 
