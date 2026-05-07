@@ -15,20 +15,33 @@ const Auth = {
   async signUp(email, password) {
     const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) return { error: error.message };
-    // 注册成功后可能需要确认邮箱，取决于 Supabase 配置
-    if (data.user) {
+    if (data.session) {
       this.currentUser = data.user;
       this.onLogin();
+      return { success: true };
     }
-    return { success: '注册成功！' + (data.session ? '' : '请查收确认邮件。') };
+    // 需要邮箱确认
+    return { success: '注册成功！请查收确认邮件后重新登录。' };
   },
 
   async signIn(email, password) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { error: error.message };
+    if (error) {
+      if (error.message.includes('Invalid login')) return { error: '邮箱或密码错误' };
+      if (error.message.includes('Email not confirmed')) return { error: '邮箱尚未确认，请先点击邮件中的确认链接' };
+      return { error: error.message };
+    }
     this.currentUser = data.user;
     this.onLogin();
     return { success: true };
+  },
+
+  async resetPassword(email) {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/#auth'
+    });
+    if (error) return { error: error.message };
+    return { success: '重置密码邮件已发送，请查收' };
   },
 
   async signOut() {

@@ -85,6 +85,27 @@ function setupAuthForm() {
     isLogin = !isLogin;
     updateMode();
     errorEl.classList.add('hidden');
+    errorEl.style.color = '#EF4444';
+  });
+
+  // 忘记密码
+  document.getElementById('forgot-password-btn').addEventListener('click', async () => {
+    const email = document.getElementById('auth-email').value.trim();
+    if (!email) {
+      errorEl.style.color = '#EF4444';
+      errorEl.textContent = '请先输入邮箱地址';
+      errorEl.classList.remove('hidden');
+      return;
+    }
+    const result = await Auth.resetPassword(email);
+    if (result.error) {
+      errorEl.style.color = '#EF4444';
+      errorEl.textContent = result.error;
+    } else {
+      errorEl.style.color = '#10B981';
+      errorEl.textContent = result.success;
+    }
+    errorEl.classList.remove('hidden');
   });
 
   form.addEventListener('submit', async (e) => {
@@ -103,18 +124,35 @@ function setupAuthForm() {
       return;
     }
 
+    // 禁用按钮防重复提交
+    submitBtn.disabled = true;
+    submitBtn.textContent = '处理中...';
+
     let result;
     if (isLogin) {
       result = await Auth.signIn(email, password);
     } else {
       result = await Auth.signUp(email, password);
     }
+
+    submitBtn.disabled = false;
+    updateMode();
+
     if (result.error) {
+      errorEl.style.color = '#EF4444';
       errorEl.textContent = result.error;
       errorEl.classList.remove('hidden');
     } else if (result.success && Auth.currentUser) {
       errorEl.classList.add('hidden');
       await refreshDashboard();
+    } else if (result.success) {
+      // 注册成功但需要邮箱确认
+      errorEl.style.color = '#10B981';
+      errorEl.textContent = result.success;
+      errorEl.classList.remove('hidden');
+      // 切换到登录模式
+      isLogin = true;
+      updateMode();
     }
   });
 }
