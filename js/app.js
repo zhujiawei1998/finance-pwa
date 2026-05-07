@@ -1,3 +1,10 @@
+// 全局错误捕获
+window.onerror = function(msg, url, line) {
+  console.error('App error:', msg, url, line);
+  var el = document.getElementById('global-error');
+  if (el) { el.classList.remove('hidden'); el.textContent = '出错: ' + msg; }
+};
+
 // 主入口 — 连接所有模块
 let miniPieChartInstance = null;
 
@@ -13,50 +20,37 @@ const pageTitles = {
 
 async function initApp() {
   initSupabase();
-
   if (!supabase) {
-    // 显示加载提示
-    Toast.show('正在连接...', '');
-    setTimeout(() => {
-      initSupabase();
-      if (!supabase) {
-        Toast.show('连接失败，请检查网络后刷新页面', 'error');
-      } else {
-        doAuthAndStart();
-      }
-    }, 2000);
-  } else {
-    await doAuthAndStart();
+    document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif"><h2>加载失败</h2><p>请检查网络连接后刷新页面</p></div>';
+    return;
   }
 
-  async function doAuthAndStart() {
-    Offline.init();
+  Offline.init();
 
-    const ok = await Auth.init();
-    if (!ok) {
-      Toast.show('连接失败，请刷新重试', 'error');
-      return;
-    }
-
-    Router.init();
-    window.addEventListener('hashchange', onPageChanged);
-
-    document.querySelectorAll('.tab-item').forEach(tab => {
-      tab.addEventListener('click', () => Router.go(tab.dataset.page));
-    });
-
-    window.addEventListener('hashchange', () => {
-      if (location.hash === '#charts') initCharts();
-    });
-
-    Notifications.init();
-
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
-    }
-
-    await refreshDashboard();
+  const ok = await Auth.init();
+  if (!ok) {
+    document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif"><h2>连接失败</h2><p>请确认已在 Supabase 后台启用匿名登录后刷新页面</p></div>';
+    return;
   }
+
+  Router.init();
+  window.addEventListener('hashchange', onPageChanged);
+
+  document.querySelectorAll('.tab-item').forEach(tab => {
+    tab.addEventListener('click', () => Router.go(tab.dataset.page));
+  });
+
+  window.addEventListener('hashchange', () => {
+    if (location.hash === '#charts') initCharts();
+  });
+
+  Notifications.init();
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
+
+  await refreshDashboard();
 }
 
 function onPageChanged() {
