@@ -14,49 +14,47 @@ const pageTitles = {
 async function initApp() {
   initSupabase();
 
-  // 不管 Supabase 有没有加载，先绑定认证表单事件
   if (!supabase) {
-    document.getElementById('auth-error').textContent = '正在加载中，请稍候...';
-    document.getElementById('auth-error').classList.remove('hidden');
-    // 延迟重试
+    // 显示加载提示
+    Toast.show('正在连接...', '');
     setTimeout(() => {
       initSupabase();
       if (!supabase) {
-        document.getElementById('auth-error').textContent = '加载失败，请检查网络后刷新页面';
+        Toast.show('连接失败，请检查网络后刷新页面', 'error');
       } else {
-        document.getElementById('auth-error').classList.add('hidden');
+        doAuthAndStart();
       }
     }, 2000);
+  } else {
+    await doAuthAndStart();
   }
 
-  Offline.init();
-  setupAuthForm();
+  async function doAuthAndStart() {
+    Offline.init();
 
-  // 只有 Supabase 就绪才恢复登录态
-  if (supabase) {
-    await Auth.init();
-  }
+    const ok = await Auth.init();
+    if (!ok) {
+      Toast.show('连接失败，请刷新重试', 'error');
+      return;
+    }
 
-  Router.init();
-  window.addEventListener('hashchange', onPageChanged);
+    Router.init();
+    window.addEventListener('hashchange', onPageChanged);
 
-  document.querySelectorAll('.tab-item').forEach(tab => {
-    tab.addEventListener('click', () => Router.go(tab.dataset.page));
-  });
+    document.querySelectorAll('.tab-item').forEach(tab => {
+      tab.addEventListener('click', () => Router.go(tab.dataset.page));
+    });
 
-  document.getElementById('logout-btn').addEventListener('click', () => Auth.signOut());
+    window.addEventListener('hashchange', () => {
+      if (location.hash === '#charts') initCharts();
+    });
 
-  window.addEventListener('hashchange', () => {
-    if (location.hash === '#charts') initCharts();
-  });
+    Notifications.init();
 
-  Notifications.init();
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
 
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-  }
-
-  if (Auth.currentUser) {
     await refreshDashboard();
   }
 }
@@ -66,105 +64,6 @@ function onPageChanged() {
   document.getElementById('page-title').textContent = pageTitles[name] || name;
   if (name === 'dashboard') refreshDashboard();
   if (name === 'history') refreshHistory();
-}
-
-// --- 认证表单 ---
-function setupAuthForm() {
-  const form = document.getElementById('auth-form');
-  const submitBtn = document.getElementById('auth-submit-btn');
-  const switchBtn = document.getElementById('auth-switch-btn');
-  const switchText = document.getElementById('auth-switch-text');
-  const errorEl = document.getElementById('auth-error');
-  let isLogin = true;
-
-  function updateMode() {
-    submitBtn.textContent = isLogin ? '登 录' : '注 册';
-    switchText.textContent = isLogin ? '没有账号？' : '已有账号？';
-    switchBtn.textContent = isLogin ? '立即注册' : '去登录';
-  }
-
-  switchBtn.addEventListener('click', () => {
-    isLogin = !isLogin;
-    updateMode();
-    errorEl.classList.add('hidden');
-    errorEl.style.color = '#EF4444';
-  });
-
-  // 忘记密码
-  document.getElementById('forgot-password-btn').addEventListener('click', async () => {
-    const email = document.getElementById('auth-email').value.trim();
-    if (!email) {
-      errorEl.style.color = '#EF4444';
-      errorEl.textContent = '请先输入邮箱地址';
-      errorEl.classList.remove('hidden');
-      return;
-    }
-    const result = await Auth.resetPassword(email);
-    if (result.error) {
-      errorEl.style.color = '#EF4444';
-      errorEl.textContent = result.error;
-    } else {
-      errorEl.style.color = '#10B981';
-      errorEl.textContent = result.success;
-    }
-    errorEl.classList.remove('hidden');
-  });
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    if (!supabase) {
-      errorEl.style.color = '#EF4444';
-      errorEl.textContent = '连接未就绪，请刷新页面后重试';
-      errorEl.classList.remove('hidden');
-      return;
-    }
-
-    const email = document.getElementById('auth-email').value.trim();
-    const password = document.getElementById('auth-password').value;
-
-    if (!email || !password) {
-      errorEl.textContent = '请填写邮箱和密码';
-      errorEl.classList.remove('hidden');
-      return;
-    }
-    if (password.length < 6) {
-      errorEl.textContent = '密码至少 6 位';
-      errorEl.classList.remove('hidden');
-      return;
-    }
-
-    // 禁用按钮防重复提交
-    submitBtn.disabled = true;
-    submitBtn.textContent = '处理中...';
-
-    let result;
-    if (isLogin) {
-      result = await Auth.signIn(email, password);
-    } else {
-      result = await Auth.signUp(email, password);
-    }
-
-    submitBtn.disabled = false;
-    updateMode();
-
-    if (result.error) {
-      errorEl.style.color = '#EF4444';
-      errorEl.textContent = result.error;
-      errorEl.classList.remove('hidden');
-    } else if (result.success && Auth.currentUser) {
-      errorEl.classList.add('hidden');
-      await refreshDashboard();
-    } else if (result.success) {
-      // 注册成功但需要邮箱确认
-      errorEl.style.color = '#10B981';
-      errorEl.textContent = result.success;
-      errorEl.classList.remove('hidden');
-      // 切换到登录模式
-      isLogin = true;
-      updateMode();
-    }
-  });
 }
 
 // --- 仪表盘渲染 ---
