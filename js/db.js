@@ -14,12 +14,14 @@ const DB = {
     e.created_at = new Date().toISOString();
     list.push(e);
     this._saveExpenses(list);
+    Sync.addExpense(e);
     return e;
   },
   getExpenses() { return this._expenses(); },
   deleteExpense(id) {
     const list = this._expenses().filter(e => e.id !== id);
     this._saveExpenses(list);
+    Sync.deleteExpense(id);
   },
 
   // --- 收入 ---
@@ -29,12 +31,14 @@ const DB = {
     i.created_at = new Date().toISOString();
     list.push(i);
     this._saveIncomes(list);
+    Sync.addIncome(i);
     return i;
   },
   getIncomes() { return this._incomes(); },
   deleteIncome(id) {
     const list = this._incomes().filter(i => i.id !== id);
     this._saveIncomes(list);
+    Sync.deleteIncome(id);
   },
 
   // --- 预算 ---

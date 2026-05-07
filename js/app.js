@@ -27,6 +27,16 @@ async function initApp() {
   }
 
   Notifications.init();
+
+  // 启动自动同步
+  initSupabase();
+  if (supabase) {
+    Sync.init().then(function() {
+      refreshDashboard();
+      if (typeof refreshBudget === 'function') refreshBudget();
+    });
+  }
+
   await refreshDashboard();
 }
 
