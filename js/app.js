@@ -7,6 +7,10 @@ const pageTitles = {
 };
 
 async function initApp() {
+  // 绑定表单事件
+  ExpenseForm.init();
+  IncomeForm.init();
+
   Router.init();
   window.addEventListener('hashchange', onPageChanged);
 
