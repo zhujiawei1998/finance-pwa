@@ -18,6 +18,8 @@ const SHELL_FILES = [
   '/js/notifications.js',
   '/js/offline.js',
   '/js/app.js',
+  '/js/vendor/supabase.min.js',
+  '/js/vendor/chart.min.js',
   '/icons/icon-192.png',
   '/icons/icon-512.png'
 ];
@@ -46,7 +48,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
-  if (url.hostname.includes('supabase.co') || url.hostname.includes('cdn.jsdelivr.net')) {
+  if (url.hostname.includes('supabase.co')) {
     return;
   }
 
