@@ -1,13 +1,12 @@
 // Service Worker — 缓存壳层，离线回退
-const CACHE_NAME = 'finance-pwa-v3';
+const CACHE_NAME = 'finance-pwa-v4';
 const SHELL_FILES = [
   '/',
   '/index.html',
   '/css/style.css',
   '/js/config.js',
-  '/js/supabase-client.js',
+  '/js/db.js',
   '/js/router.js',
-  '/js/auth.js',
   '/js/stats.js',
   '/js/expenses.js',
   '/js/income.js',
@@ -16,9 +15,7 @@ const SHELL_FILES = [
   '/js/history.js',
   '/js/export.js',
   '/js/notifications.js',
-  '/js/offline.js',
   '/js/app.js',
-  '/js/vendor/supabase.min.js',
   '/js/vendor/chart.min.js',
   '/icons/icon-192.png',
   '/icons/icon-512.png'
@@ -46,12 +43,6 @@ self.addEventListener('activate', e => {
 
 // Fetch — 对 API 请求 skip cache，对壳层文件 cache-first
 self.addEventListener('fetch', e => {
-  const url = new URL(e.request.url);
-
-  if (url.hostname.includes('supabase.co')) {
-    return;
-  }
-
   e.respondWith(
     caches.match(e.request).then(cached => cached || fetch(e.request).catch(() => {
       if (e.request.mode === 'navigate') {

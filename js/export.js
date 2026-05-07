@@ -1,40 +1,54 @@
-// CSV 导出模块
 const ExportCSV = {
-  async run() {
-    const userId = Auth.currentUser?.id;
-    if (!userId) return;
-
-    Toast.show('正在导出...', '');
-
-    // 获取所有数据
-    const [{ data: expenses }, { data: incomes }] = await Promise.all([
-      supabase.from('expenses').select('date, amount, expense_type, category, note').eq('user_id', userId).order('date', { ascending: false }),
-      supabase.from('income').select('date, amount, category, note').eq('user_id', userId).order('date', { ascending: false })
-    ]);
-
-    const typeLabels = { waste: '浪费', consumption: '消费', investment: '投资' };
+  run() {
+    const exps = DB.getExpenses();
+    const incs = DB.getIncomes();
+    const tl = { waste: '浪费', consumption: '消费', investment: '投资' };
     const rows = ['﻿类型,分类,金额,日期,备注,支出类型'];
-
-    (expenses || []).forEach(e => {
-      rows.push(`支出,${e.category},${e.amount},${e.date},"${(e.note || '').replace(/"/g, '""')}",${typeLabels[e.expense_type] || e.expense_type}`);
-    });
-    (incomes || []).forEach(i => {
-      rows.push(`收入,${i.category},${i.amount},${i.date},"${(i.note || '').replace(/"/g, '""')}",`);
-    });
+    exps.forEach(e => rows.push(`支出,${e.category},${e.amount},${e.date},"${(e.note||'').replace(/"/g,'""')}",${tl[e.expense_type]||e.expense_type}`));
+    incs.forEach(i => rows.push(`收入,${i.category},${i.amount},${i.date},"${(i.note||'').replace(/"/g,'""')}",`));
 
     const now = new Date();
-    const filename = `个人记账_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.csv`;
-
+    const fn = `个人记账_${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}.csv`;
     const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = fn;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    Toast.show('CSV 导出成功', 'success');
+  }
+};
+
+// 数据同步：JSON 导出/导入
+const SyncManager = {
+  exportJSON() {
+    const json = DB.exportAll();
+    const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    a.download = `记账备份_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    Toast.show('数据备份成功', 'success');
+  },
 
-    Toast.show('导出成功', 'success');
+  importJSON() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const before = DB.getExpenses().length + DB.getIncomes().length;
+        DB.importAll(text);
+        const after = DB.getExpenses().length + DB.getIncomes().length;
+        Toast.show(`同步完成，新增 ${after - before} 条记录`, 'success');
+        refreshDashboard();
+        if (typeof refreshBudget === 'function') refreshBudget();
+      } catch (err) {
+        Toast.show('文件格式错误', 'error');
+      }
+    };
+    input.click();
   }
 };

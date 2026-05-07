@@ -49,9 +49,6 @@ const Notifications = {
       if (localStorage.getItem('last_notification_date') === today) return;
     } catch (e) { return; }
 
-    const userId = Auth.currentUser?.id;
-    if (!userId) return;
-
     const [weekExp, weekInc, savings] = await Promise.all([
       Stats.getWeekExpense(),
       Stats.getWeekIncome(),
