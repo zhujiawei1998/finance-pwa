@@ -1,5 +1,5 @@
 // Service Worker — 缓存壳层，离线回退
-const CACHE_NAME = 'finance-pwa-v6';
+const CACHE_NAME = 'finance-pwa-v7';
 const SHELL_FILES = [
   '/',
   '/index.html',
@@ -16,6 +16,7 @@ const SHELL_FILES = [
   '/js/budget.js',
   '/js/history.js',
   '/js/export.js',
+  '/js/claude-export.js',
   '/js/notifications.js',
   '/js/app.js',
   '/js/vendor/supabase.min.js',

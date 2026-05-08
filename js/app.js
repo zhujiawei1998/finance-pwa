@@ -3,7 +3,8 @@ let miniPieChartInstance = null;
 
 const pageTitles = {
   dashboard: '首页', 'add-expense': '记录支出', 'add-income': '记录收入',
-  history: '历史记录', charts: '统计图表', budget: '预算管理', sync: '数据管理'
+  history: '历史记录', charts: '统计图表', budget: '预算管理', sync: '数据管理',
+  'claude-report': 'AI报告'
 };
 
 async function initApp() {
@@ -46,6 +47,7 @@ function onPageChanged() {
   if (name === 'dashboard') refreshDashboard();
   if (name === 'history') refreshHistory();
   if (name === 'sync') renderSyncPage();
+  if (name === 'claude-report') initClaudeReport();
 }
 
 // --- 仪表盘 ---
@@ -128,5 +130,130 @@ const Toast = {
     this._timer = setTimeout(() => el.classList.add('hidden'), 2000);
   }
 };
+
+// --- AI 报告 (Claude 数据管道) ---
+function initClaudeReport() {
+  const btn = document.getElementById('gen-report-btn');
+  if (btn) {
+    btn.onclick = () => {
+      btn.textContent = '⏳ 生成中...';
+      btn.disabled = true;
+      setTimeout(() => {
+        renderReportFiles();
+        btn.textContent = '🔄 重新生成';
+        btn.disabled = false;
+      }, 100);
+    };
+  }
+  // 如果已经生成过，直接显示（保持在页面切换间）
+  const container = document.getElementById('report-files');
+  if (container && !container.classList.contains('hidden')) {
+    return;
+  }
+}
+
+function renderReportFiles() {
+  const container = document.getElementById('report-files');
+  if (!container) return;
+  container.classList.remove('hidden');
+
+  const files = ClaudeExport.getFiles();
+  // 缓存供按钮使用
+  window.__reportFiles = files;
+
+  const totalExp = DB.getExpenses().length;
+  const totalInc = DB.getIncomes().length;
+
+  let html = `
+    <div class="card" style="text-align:center;margin-bottom:12px">
+      <p style="color:var(--text-secondary);font-size:14px">
+        基于 <strong>${totalExp}</strong> 条支出 + <strong>${totalInc}</strong> 条收入 生成
+      </p>
+    </div>`;
+
+  files.forEach((f, i) => {
+    const preview = f.content.length > 500
+      ? f.content.slice(0, 500) + '\n... (点击展开查看全文)'
+      : f.content;
+    html += `
+      <div class="card report-file-card">
+        <div class="report-file-header">
+          <div>
+            <div class="report-file-name">📄 ${escapeHTML(f.name)}</div>
+            <div class="report-file-desc">${escapeHTML(f.desc)}</div>
+            <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">→ ${escapeHTML(f.path)}</div>
+          </div>
+        </div>
+        <pre class="report-preview" data-file-index="${i}">${escapeHTML(preview)}</pre>
+        <div class="report-actions">
+          <button class="btn btn-primary download-btn" data-file-index="${i}">📥 下载</button>
+          <button class="btn btn-secondary copy-btn" data-file-index="${i}">📋 复制</button>
+          <button class="btn btn-secondary preview-btn" data-file-index="${i}">👁 预览</button>
+        </div>
+      </div>`;
+  });
+
+  html += `
+    <div class="card" style="text-align:center;margin-top:12px">
+      <button class="btn btn-primary btn-full" id="download-all-btn">📦 一键下载全部 (4个文件)</button>
+      <p style="font-size:11px;color:var(--text-secondary);margin-top:8px">iOS: 每个文件会依次弹出保存。下载后请放入 claude-finance-agents 对应目录。</p>
+    </div>`;
+
+  container.innerHTML = html;
+
+  // 绑定事件
+  container.querySelectorAll('.download-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const f = window.__reportFiles[parseInt(this.dataset.fileIndex)];
+      ClaudeExport.downloadFile(f.name, f.content, f.type);
+    });
+  });
+
+  container.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const f = window.__reportFiles[parseInt(this.dataset.fileIndex)];
+      ClaudeExport.copyContent(f.content);
+    });
+  });
+
+  container.querySelectorAll('.preview-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const f = window.__reportFiles[parseInt(this.dataset.fileIndex)];
+      ClaudeExport.previewFile(f.name, f.content, f.type);
+    });
+  });
+
+  // 预览框点击展开/收起
+  container.querySelectorAll('.report-preview').forEach(pre => {
+    pre.addEventListener('click', function() {
+      const idx = parseInt(this.dataset.fileIndex);
+      const full = window.__reportFiles[idx].content;
+      if (this.classList.contains('expanded')) {
+        this.classList.remove('expanded');
+        this.textContent = full.length > 500 ? full.slice(0, 500) + '\n... (点击展开查看全文)' : full;
+      } else {
+        this.classList.add('expanded');
+        this.textContent = full;
+      }
+    });
+  });
+
+  const downloadAllBtn = document.getElementById('download-all-btn');
+  if (downloadAllBtn) {
+    downloadAllBtn.addEventListener('click', downloadAllReports);
+  }
+}
+
+function downloadAllReports() {
+  const files = window.__reportFiles || ClaudeExport.getFiles();
+  let i = 0;
+  function next() {
+    if (i >= files.length) { Toast.show('4 个文件下载完成', 'success'); return; }
+    ClaudeExport.downloadFile(files[i].name, files[i].content, files[i].type);
+    i++;
+    setTimeout(next, 600);
+  }
+  next();
+}
 
 document.addEventListener('DOMContentLoaded', initApp);

@@ -503,3 +503,69 @@ body {
   font-weight: 600;
   cursor: pointer;
 }
+
+/* --- AI 报告页 --- */
+.report-files { padding: 0 16px; }
+
+.report-file-card {
+  margin: 0 0 12px 0;
+  padding: 14px;
+}
+
+.report-file-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.report-file-name {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.report-file-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.report-preview {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 11px;
+  line-height: 1.5;
+  max-height: 150px;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text-secondary);
+  cursor: pointer;
+  -webkit-user-select: text;
+  user-select: text;
+  transition: max-height 0.3s;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+}
+
+.report-preview.expanded {
+  max-height: none;
+}
+
+.report-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.report-actions .btn {
+  flex: 1;
+  font-size: 13px;
+  padding: 10px 8px;
+  min-height: 40px;
+}
+
+#download-all-btn {
+  margin-bottom: 4px;
+}
